@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
 class Item {
-  Item(this.name, {this.category = 'Other'});
+  Item(this.name, {this.category = 'Food', this.quantity = 1, this.note = ''});
 
   String name;
   bool bought = false;
   String category;
+  int quantity;
+  String note;
 }
 
 void main() {
@@ -38,181 +40,110 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final items = [
-    Item('Milk', category: 'Food'),
+  final items = <Item>[
+    Item('Milk', category: 'Drinks', quantity: 2),
     Item('Bread', category: 'Food'),
     Item('Rice', category: 'Food'),
   ];
+
   final controller = TextEditingController();
   String selectedCategory = 'Food';
+  String filter = 'All';
 
-  static const categories = ['Food', 'Home', 'Other'];
+  static const categories = ['Food', 'Drinks', 'Home'];
+
+  List<Item> get visibleItems {
+    var list = items.where((item) {
+      if (filter == 'To buy' && item.bought) return false;
+      if (filter == 'Bought' && !item.bought) return false;
+      return true;
+    }).toList();
+
+    if (filter == 'All') {
+      final left = list.where((i) => !i.bought).toList();
+      final done = list.where((i) => i.bought).toList();
+      list = [...left, ...done];
+    }
+    return list;
+  }
 
   void addItem() {
     final text = controller.text.trim();
     if (text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Type an item first')),
-      );
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(content: Text('Type an item first')),
+        );
       return;
     }
-    setState(() {
-      items.add(Item(text, category: selectedCategory));
-    });
+
+    final normalized = text.toLowerCase();
+    final existing = items.firstWhere(
+          (i) => i.name.trim().toLowerCase() == normalized,
+      orElse: () => Item(''),
+    );
+
+    if (existing.name.isNotEmpty) {
+      setState(() => existing.quantity += 1);
+      final display = existing.name;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text('$display is already on the list: now ×${existing.quantity}'),
+          ),
+        );
+    } else {
+      setState(() => items.add(Item(text, category: selectedCategory)));
+    }
     controller.clear();
   }
 
-  void deleteItem(int index) {
+  void deleteItem(Item item) {
+    final index = items.indexOf(item);
+    if (index == -1) return;
     final removed = items[index];
-    setState(() {
-      items.removeAt(index);
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${removed.name} removed'),
-        action: SnackBarAction(
-          label: 'Undo',
-          onPressed: () {
-            setState(() {
-              items.insert(index, removed);
-            });
-          },
+
+    setState(() => items.removeAt(index));
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text('${removed.name} removed'),
+          action: SnackBarAction(
+            label: 'Undo',
+            onPressed: () {
+              setState(() => items.insert(index, removed));
+            },
+          ),
         ),
-      ),
-    );
-  }
-
-  void editItem(int index) {
-    final item = items[index];
-    final editController = TextEditingController(text: item.name);
-    String editCategory = item.category;
-
-    showDialog<void>(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('Edit item'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: editController,
-                    decoration: const InputDecoration(labelText: 'Name'),
-                    autofocus: true,
-                  ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    initialValue: editCategory,
-                    decoration: const InputDecoration(labelText: 'Category'),
-                    items: categories
-                        .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                        .toList(),
-                    onChanged: (v) {
-                      if (v != null) {
-                        setDialogState(() => editCategory = v);
-                      }
-                    },
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  onPressed: () {
-                    final newName = editController.text.trim();
-                    if (newName.isEmpty) return;
-                    setState(() {
-                      item.name = newName;
-                      item.category = editCategory;
-                    });
-                    Navigator.pop(context);
-                  },
-                  child: const Text('Save'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  void deleteAll() {
-    if (items.isEmpty) return;
-    showDialog<void>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Delete all?'),
-          content: Text('Remove all ${items.length} items from the list?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: Colors.red),
-              onPressed: () {
-                setState(() => items.clear());
-                Navigator.pop(context);
-              },
-              child: const Text('Delete all'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void clearBought() {
-    final boughtCount = items.where((i) => i.bought).length;
-    if (boughtCount == 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No bought items to clear')),
       );
-      return;
-    }
-    showDialog<void>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Clear bought items?'),
-          content: Text('Remove $boughtCount bought item(s)?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () {
-                setState(() {
-                  items.removeWhere((i) => i.bought);
-                });
-                Navigator.pop(context);
-              },
-              child: const Text('Clear'),
-            ),
-          ],
-        );
-      },
-    );
   }
 
-  @override
-  void dispose() {
-    controller.dispose();
-    super.dispose();
+  void changeQuantity(Item item, int delta) {
+    setState(() {
+      final next = item.quantity + delta;
+      if (next < 1) return;
+      item.quantity = next;
+    });
+  }
+
+  void openDetails(Item item) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => DetailsScreen(item: item)),
+    );
+    setState(() {});
   }
 
   IconData categoryIcon(String category) {
     switch (category) {
       case 'Food':
         return Icons.restaurant;
+      case 'Drinks':
+        return Icons.local_drink;
       case 'Home':
         return Icons.home;
       default:
@@ -224,60 +155,56 @@ class _HomeScreenState extends State<HomeScreen> {
     switch (category) {
       case 'Food':
         return Colors.orange;
-      case 'Home':
+      case 'Drinks':
         return Colors.blue;
+      case 'Home':
+        return Colors.green;
       default:
         return Colors.grey;
     }
   }
 
-  Widget categoryChip(String category) {
-    final color = categoryColor(category);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.4)),
-      ),
-      child: Text(
-        category,
-        style: TextStyle(
-          fontSize: 12,
-          color: color,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final leftCount = items.where((item) => !item.bought).length;
-    final boughtCount = items.length - leftCount;
+    final showing = visibleItems;
 
     return Scaffold(
       appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(widget.title),
-            Text(
-              '$leftCount left · $boughtCount bought',
-              style: const TextStyle(fontSize: 13),
-            ),
-          ],
-        ),
+        title: Text(widget.title),
         actions: [
           IconButton(
             icon: const Icon(Icons.delete_sweep),
             tooltip: 'Clear bought items',
-            onPressed: clearBought,
-          ),
-          IconButton(
-            icon: const Icon(Icons.delete_forever),
-            tooltip: 'Delete all',
-            onPressed: deleteAll,
+            onPressed: () {
+              final bought = items.where((i) => i.bought).toList();
+              if (bought.isEmpty) return;
+              showDialog<void>(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('Clear bought items?'),
+                  content: Text('Remove ${bought.length} bought item(s)?'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Cancel'),
+                    ),
+                    FilledButton(
+                      onPressed: () {
+                        setState(() => items.removeWhere((i) => i.bought));
+                        Navigator.pop(context);
+                      },
+                      child: const Text('Clear'),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
         ],
       ),
@@ -337,45 +264,42 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: ['All', 'To buy', 'Bought'].map((label) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: ChoiceChip(
+                        label: Text(label),
+                        selected: filter == label,
+                        onSelected: (_) {
+                          setState(() => filter = label);
+                        },
+                      ),
+                    );
+                  }).toList(),
+                ),
               ],
             ),
           ),
           const Divider(height: 1),
           Expanded(
-            child: items.isEmpty
+            child: showing.isEmpty
                 ? Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.shopping_cart_outlined,
-                    size: 72,
-                    color: Colors.grey.shade400,
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Your list is empty',
-                    style: TextStyle(
-                      fontSize: 18,
-                      color: Colors.grey.shade600,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Add an item above to get started',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey.shade500,
-                    ),
-                  ),
-                ],
+              child: Text(
+                items.isEmpty ? 'Your list is empty' : 'Nothing here',
+                style: TextStyle(
+                  fontSize: 18,
+                  color: Colors.grey.shade600,
+                ),
               ),
             )
                 : ListView.builder(
               padding: const EdgeInsets.all(8),
-              itemCount: items.length,
+              itemCount: showing.length,
               itemBuilder: (context, index) {
-                final item = items[index];
+                final item = showing[index];
                 return Dismissible(
                   key: ObjectKey(item),
                   direction: DismissDirection.endToStart,
@@ -390,12 +314,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       color: Colors.red,
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(
-                      Icons.delete,
-                      color: Colors.white,
-                    ),
+                    child: const Icon(Icons.delete, color: Colors.white),
                   ),
-                  onDismissed: (_) => deleteItem(index),
+                  onDismissed: (_) => deleteItem(item),
                   child: Card(
                     elevation: 1,
                     margin: const EdgeInsets.symmetric(
@@ -420,16 +341,50 @@ class _HomeScreenState extends State<HomeScreen> {
                           color: item.bought ? Colors.grey : null,
                         ),
                       ),
-                      subtitle: categoryChip(item.category),
+                      subtitle: Text(
+                        item.note.isEmpty
+                            ? item.category
+                            : '${item.category} · ${item.note}',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: categoryColor(item.category),
+                        ),
+                      ),
                       onTap: () {
-                        setState(() {
-                          item.bought = !item.bought;
-                        });
+                        setState(() => item.bought = !item.bought);
                       },
-                      onLongPress: () => editItem(index),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.delete_outline),
-                        onPressed: () => deleteItem(index),
+                      onLongPress: () => openDetails(item),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(
+                              Icons.remove_circle_outline,
+                              size: 20,
+                            ),
+                            onPressed: item.quantity > 1
+                                ? () => changeQuantity(item, -1)
+                                : null,
+                          ),
+                          Text(
+                            '${item.quantity}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 16,
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(
+                              Icons.add_circle_outline,
+                              size: 20,
+                            ),
+                            onPressed: () => changeQuantity(item, 1),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline),
+                            onPressed: () => deleteItem(item),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -438,6 +393,103 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class DetailsScreen extends StatefulWidget {
+  const DetailsScreen({super.key, required this.item});
+
+  final Item item;
+
+  @override
+  State<DetailsScreen> createState() => _DetailsScreenState();
+}
+
+class _DetailsScreenState extends State<DetailsScreen> {
+  late final TextEditingController nameController;
+  late final TextEditingController noteController;
+  late String category;
+
+  static const cats = ['Food', 'Drinks', 'Home'];
+
+  @override
+  void initState() {
+    super.initState();
+    nameController = TextEditingController(text: widget.item.name);
+    noteController = TextEditingController(text: widget.item.note);
+    category = widget.item.category;
+  }
+
+  @override
+  void dispose() {
+    nameController.dispose();
+    noteController.dispose();
+    super.dispose();
+  }
+
+  void save() {
+    final newName = nameController.text.trim();
+    if (newName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Name cannot be empty')),
+      );
+      return;
+    }
+    widget.item.name = newName;
+    widget.item.note = noteController.text.trim();
+    widget.item.category = category;
+    Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Item details')),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              controller: nameController,
+              decoration: const InputDecoration(
+                labelText: 'Name',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: noteController,
+              decoration: const InputDecoration(
+                labelText: 'Note (e.g. 1 litre bottle)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Category',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              children: cats.map((c) {
+                return ChoiceChip(
+                  label: Text(c),
+                  selected: category == c,
+                  onSelected: (_) => setState(() => category = c),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 24),
+            FilledButton(
+              onPressed: save,
+              child: const Text('Save'),
+            ),
+          ],
+        ),
       ),
     );
   }
